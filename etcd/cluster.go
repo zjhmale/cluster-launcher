@@ -2,12 +2,11 @@ package etcd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
 	"sync"
-
-	"github.com/tevino/abool"
 )
 
 type ContainerCluster interface {
@@ -25,7 +24,7 @@ type EtcdCluster struct {
 	context    context.Context
 }
 
-func NewEtcdCluster(clusterName string, nodesNum int) *EtcdCluster {
+func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 	var endpoints []string
 	var containers []*EtcdContainer
 
@@ -36,18 +35,21 @@ func NewEtcdCluster(clusterName string, nodesNum int) *EtcdCluster {
 
 	ctx := context.Background()
 	wg := sync.WaitGroup{}
-	listener := &EtcdListener{
-		waitgroup:     &wg,
-		failedToStart: abool.New(),
-	}
+	listener := NewEtcdListener(&wg)
 
+	var rtnErr error
 	for i := 0; i < nodesNum; i++ {
 		endpoint := fmt.Sprintf("etcd%d", i)
 		container, err := NewEtcdContainer(ctx, clusterName, listener, endpoint, endpoints)
 		if err != nil {
-			continue
+			rtnErr = err
+			break
 		}
 		containers = append(containers, container)
+	}
+
+	if rtnErr != nil {
+		return nil, rtnErr
 	}
 
 	return &EtcdCluster{
@@ -55,58 +57,82 @@ func NewEtcdCluster(clusterName string, nodesNum int) *EtcdCluster {
 		waitgroup:  &wg,
 		listener:   listener,
 		context:    ctx,
-	}
+	}, nil
 }
 
-func (ec *EtcdCluster) Start() {
+func (ec *EtcdCluster) Start() error {
 	for _, c := range ec.containers {
 		c := c
 		ec.waitgroup.Add(1)
 		go func() {
 			log.Printf("Starting etcd container %v", c.endpoint)
-			c.Start()
+			if err := c.Start(); err != nil {
+				log.Printf("Error %v when starting etcd container %v", err, c.endpoint)
+			}
 		}()
 	}
 	ec.waitgroup.Wait()
-	if ec.listener.failedToStart.IsSet() {
-		log.Fatal("Etcd cluster failed to start")
+	if ec.listener.IsFailed() {
+		return errors.New("Etcd cluster failed to start")
 	}
+	return nil
 }
 
-func (ec *EtcdCluster) Restart() {
+func (ec *EtcdCluster) Restart() error {
 	for _, c := range ec.containers {
 		c := c
 		ec.waitgroup.Add(1)
 		go func() {
 			log.Printf("Restarting etcd container %v", c.endpoint)
-			c.Restart()
+			if err := c.Restart(); err != nil {
+				log.Printf("Error %v when restarting etcd container %v", err, c.endpoint)
+			}
 		}()
 	}
 	ec.waitgroup.Wait()
-	if ec.listener.failedToStart.IsSet() {
-		log.Fatal("Etcd cluster failed to restart")
+	if ec.listener.IsFailed() {
+		return errors.New("Etcd cluster failed to restart")
 	}
+	return nil
 }
 
-func (ec *EtcdCluster) Close() {
+func (ec *EtcdCluster) Close() error {
+	var rtnErr error
 	for _, c := range ec.containers {
 		log.Printf("Stopping etcd container %v", c.endpoint)
-		c.Stop()
+		if err := c.Stop(); err != nil {
+			rtnErr = err
+			break
+		}
 	}
+	return rtnErr
 }
 
-func (ec *EtcdCluster) ClientEndpoints() []*url.URL {
+func (ec *EtcdCluster) Endpoints(cb func(*EtcdContainer) (*url.URL, error)) ([]*url.URL, error) {
+	var rtnErr error
 	endpoints := make([]*url.URL, len(ec.containers))
 	for _, c := range ec.containers {
-		endpoints = append(endpoints, c.ClientEndpoint())
+		e, err := c.ClientEndpoint()
+		if err != nil {
+			rtnErr = err
+			break
+		} else {
+			endpoints = append(endpoints, e)
+		}
 	}
-	return endpoints
+
+	if rtnErr != nil {
+		return nil, rtnErr
+	} else {
+		return endpoints, nil
+	}
+
 }
 
-func (ec *EtcdCluster) PeerEndpoints() []*url.URL {
-	endpoints := make([]*url.URL, len(ec.containers))
-	for _, c := range ec.containers {
-		endpoints = append(endpoints, c.PeerEndpoint())
-	}
-	return endpoints
+func (ec *EtcdCluster) ClientEndpoints() ([]*url.URL, error) {
+	return ec.Endpoints(func(c *EtcdContainer) (*url.URL, error) { return c.ClientEndpoint() })
+}
+
+func (ec *EtcdCluster) PeerEndpoints() ([]*url.URL, error) {
+	return ec.Endpoints(func(c *EtcdContainer) (*url.URL, error) { return c.PeerEndpoint() })
 }
