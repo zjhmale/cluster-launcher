@@ -15,8 +15,9 @@ type ContainerTestSuite struct {
 
 func (suite *ContainerTestSuite) SetupSuite() {
 	ctx := context.Background()
-	listener := NewEtcdListener(&sync.WaitGroup{})
-	c, err := NewEtcdContainer(ctx, "cluster", listener, "etcd", []string{"etcd"})
+	wg := &sync.WaitGroup{}
+	listener := NewEtcdListener(wg)
+	c, err := NewEtcdContainer(ctx, wg, "cluster", listener, "etcd", []string{"etcd"})
 	if err != nil {
 		suite.T().Fatalf("Error %v when creating etcd container", err)
 	}
@@ -24,6 +25,7 @@ func (suite *ContainerTestSuite) SetupSuite() {
 	if err := c.Start(); err != nil {
 		suite.T().Fatalf("Error %v when starting etcd container", err)
 	}
+	wg.Wait()
 	suite.container = c
 }
 

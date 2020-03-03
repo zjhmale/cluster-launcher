@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/docker/go-connections/nat"
 	tc "github.com/testcontainers/testcontainers-go"
@@ -24,12 +25,14 @@ const (
 type EtcdContainer struct {
 	container *tc.DockerContainer
 	listener  *EtcdListener
+	waitgroup *sync.WaitGroup
+	context   context.Context
 	endpoint  string
 	dataDir   string
-	context   context.Context
 }
 
 func (c *EtcdContainer) Start() error {
+	c.waitgroup.Add(1)
 	if c.container != nil {
 		if err := c.container.Start(c.context); err != nil {
 			c.listener.FailedToStart(c, err)
@@ -124,7 +127,14 @@ func (c *EtcdContainer) PeerEndpoint() (*url.URL, error) {
 	return c.getEndpoint(EtcdPeerPort)
 }
 
-func NewEtcdContainer(ctx context.Context, clusterName string, listener *EtcdListener, endpoint string, endpoints []string) (*EtcdContainer, error) {
+func NewEtcdContainer(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	clusterName string,
+	listener *EtcdListener,
+	endpoint string,
+	endpoints []string,
+) (*EtcdContainer, error) {
 	clientUrl := fmt.Sprintf("http://0.0.0.0:%d", EtcdClientPort)
 	cmd := []string{
 		"etcd",
@@ -184,8 +194,9 @@ func NewEtcdContainer(ctx context.Context, clusterName string, listener *EtcdLis
 	ec := &EtcdContainer{
 		container: c.(*tc.DockerContainer),
 		listener:  listener,
-		endpoint:  endpoint,
+		waitgroup: wg,
 		context:   ctx,
+		endpoint:  endpoint,
 	}
 	if err := ec.createDataDir(); err != nil {
 		return nil, err

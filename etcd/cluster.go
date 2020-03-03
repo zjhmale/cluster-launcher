@@ -34,13 +34,13 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 	}
 
 	ctx := context.Background()
-	wg := sync.WaitGroup{}
-	listener := NewEtcdListener(&wg)
+	wg := &sync.WaitGroup{}
+	listener := NewEtcdListener(wg)
 
 	var rtnErr error
 	for i := 0; i < nodesNum; i++ {
 		endpoint := fmt.Sprintf("etcd%d", i)
-		container, err := NewEtcdContainer(ctx, clusterName, listener, endpoint, endpoints)
+		container, err := NewEtcdContainer(ctx, wg, clusterName, listener, endpoint, endpoints)
 		if err != nil {
 			rtnErr = err
 			break
@@ -54,7 +54,7 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 
 	return &EtcdCluster{
 		containers: containers,
-		waitgroup:  &wg,
+		waitgroup:  wg,
 		listener:   listener,
 		context:    ctx,
 	}, nil
@@ -63,7 +63,6 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 func (ec *EtcdCluster) Start() error {
 	for _, c := range ec.containers {
 		c := c
-		ec.waitgroup.Add(1)
 		go func() {
 			log.Printf("Starting etcd container %v", c.endpoint)
 			if err := c.Start(); err != nil {
@@ -81,7 +80,6 @@ func (ec *EtcdCluster) Start() error {
 func (ec *EtcdCluster) Restart() error {
 	for _, c := range ec.containers {
 		c := c
-		ec.waitgroup.Add(1)
 		go func() {
 			log.Printf("Restarting etcd container %v", c.endpoint)
 			if err := c.Restart(); err != nil {
