@@ -14,7 +14,7 @@ type ContainerListener interface {
 }
 
 type EtcdListener struct {
-	waitgroup     sync.WaitGroup
+	waitgroup     *sync.WaitGroup
 	failedToStart *abool.AtomicBool
 }
 

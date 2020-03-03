@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 
+	"github.com/docker/go-connections/nat"
 	tc "github.com/testcontainers/testcontainers-go"
 )
 
@@ -24,12 +26,13 @@ type EtcdContainer struct {
 	listener  *EtcdListener
 	endpoint  string
 	dataDir   string
+	context   context.Context
 }
 
-func (c *EtcdContainer) Start(ctx context.Context) {
+func (c *EtcdContainer) Start() {
 	if c.container != nil {
-		if err := c.container.Start(ctx); err != nil {
-			log.Printf("Error when starting container: %v", c.endpoint)
+		if err := c.container.Start(c.context); err != nil {
+			log.Printf("Error %v when starting container: %v", err, c.endpoint)
 			c.listener.FailedToStart(c, err)
 		} else {
 			c.listener.Started(c)
@@ -39,23 +42,23 @@ func (c *EtcdContainer) Start(ctx context.Context) {
 	}
 }
 
-func (c *EtcdContainer) Stop(ctx context.Context) {
+func (c *EtcdContainer) Stop() {
 	if c.container != nil {
-		if err := c.container.Terminate(ctx); err != nil {
-			log.Printf("Error when stoping container: %v", c.endpoint)
+		if err := c.container.Terminate(c.context); err != nil {
+			log.Printf("Error %v when stoping container: %v", err, c.endpoint)
 		} else {
 			c.listener.Stopped(c)
 		}
 	}
 }
 
-func (c *EtcdContainer) Restart(ctx context.Context) {
-	c.Stop(ctx)
-	c.Start(ctx)
+func (c *EtcdContainer) Restart() {
+	c.Stop()
+	c.Start()
 }
 
-func (c *EtcdContainer) Close(ctx context.Context) {
-	c.Stop(ctx)
+func (c *EtcdContainer) Close() {
+	c.Stop()
 	c.deleteDataDir()
 }
 
@@ -63,7 +66,7 @@ func (c *EtcdContainer) createDataDir() {
 	prefix := fmt.Sprintf("etcd_cluster_mock_data_%s", c.endpoint)
 	dir, err := ioutil.TempDir("", prefix)
 	if err != nil {
-		log.Fatalf("create data directory %s failed", prefix)
+		log.Fatalf("create data directory %s failed %v", prefix, err)
 	}
 	c.dataDir = dir
 }
@@ -74,7 +77,39 @@ func (c *EtcdContainer) deleteDataDir() {
 	}
 }
 
-func NewEtcdContainer(clusterName string, listener *EtcdListener, endpoint string, endpoints []string) (*EtcdContainer, error) {
+func (c *EtcdContainer) getEndpoint(internalPort int) *url.URL {
+	var ip string
+	var port nat.Port
+	var err error
+
+	ip, err = c.container.Host(c.context)
+	if err != nil {
+		log.Printf("Failed to get host for container %s: %v", c.endpoint, err)
+		return nil
+	}
+	port, err = c.container.MappedPort(c.context, (nat.Port)(fmt.Sprintf("%d", internalPort)))
+	if err != nil {
+		log.Printf("Failed to get %d mapped port for container %s: %v", internalPort, c.endpoint, err)
+		return nil
+	}
+
+	u, err := url.Parse(fmt.Sprintf("http://%s:%s", ip, port))
+	if err != nil {
+		log.Printf("Failed to get url for container %v with host %s port %s", c.endpoint, ip, port)
+		return nil
+	}
+	return u
+}
+
+func (c *EtcdContainer) ClientEndpoint() *url.URL {
+	return c.getEndpoint(EtcdClientPort)
+}
+
+func (c *EtcdContainer) PeerEndpoint() *url.URL {
+	return c.getEndpoint(EtcdPeerPort)
+}
+
+func NewEtcdContainer(ctx context.Context, clusterName string, listener *EtcdListener, endpoint string, endpoints []string) (*EtcdContainer, error) {
 	clientUrl := fmt.Sprintf("http://0.0.0.0:%d", EtcdClientPort)
 	cmd := []string{
 		"etcd",
@@ -100,7 +135,6 @@ func NewEtcdContainer(clusterName string, listener *EtcdListener, endpoint strin
 		)
 	}
 
-	ctx := context.Background()
 	req := tc.ContainerRequest{
 		Image: EtcdImage,
 		ExposedPorts: []string{
@@ -125,6 +159,7 @@ func NewEtcdContainer(clusterName string, listener *EtcdListener, endpoint strin
 		container: c.(*tc.DockerContainer),
 		listener:  listener,
 		endpoint:  endpoint,
+		context:   ctx,
 	}
 	ec.createDataDir()
 
