@@ -20,7 +20,7 @@ const (
 
 type EtcdContainer struct {
 	container *tc.DockerContainer
-	name string
+	name      string
 	dataDir   string
 }
 
@@ -28,7 +28,7 @@ func (c *EtcdContainer) Start(ctx context.Context) {
 	if c.container != nil {
 		if err := c.container.Start(ctx); err != nil {
 			if name, e := c.container.Name(ctx); e != nil {
-				log.Fatalf("Error when starting container: %v", name)
+				log.Printf("Error when starting container: %v", name)
 			}
 		}
 
@@ -39,7 +39,7 @@ func (c *EtcdContainer) Stop(ctx context.Context) {
 	if c.container != nil {
 		if err := c.container.Terminate(ctx); err != nil {
 			if name, e := c.container.Name(ctx); e != nil {
-				log.Fatalf("Error when stoping container: %v", name)
+				log.Printf("Error when stoping container: %v", name)
 			}
 		}
 	}
@@ -51,9 +51,7 @@ func (c *EtcdContainer) Restart(ctx context.Context) {
 }
 
 func (c *EtcdContainer) Close(ctx context.Context) {
-	if c.container != nil {
-		c.container.Terminate(ctx)
-	}
+	c.Stop(ctx)
 	c.deleteDataDir()
 }
 
@@ -72,7 +70,7 @@ func (c *EtcdContainer) deleteDataDir() {
 	}
 }
 
-func NewEtcdContainer(clusterName string, endpoint string, endpoints []string) (EtcdContainer, error) {
+func NewEtcdContainer(clusterName string, endpoint string, endpoints []string) (*EtcdContainer, error) {
 	clientUrl := fmt.Sprintf("http://0.0.0.0:%d", EtcdClientPort)
 	cmd := []string{
 		"etcd",
@@ -106,6 +104,12 @@ func NewEtcdContainer(clusterName string, endpoint string, endpoints []string) (
 			fmt.Sprintf("%d/tcp", EtcdPeerPort),
 		},
 		Cmd: cmd,
+		Networks: []string{
+			clusterName,
+		},
+		NetworkAliases: map[string][]string{
+			clusterName: []string{endpoint},
+		},
 	}
 
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
@@ -113,5 +117,8 @@ func NewEtcdContainer(clusterName string, endpoint string, endpoints []string) (
 		Started:          true,
 	})
 
-	return EtcdContainer{ container: c.(*tc.DockerContainer), name: endpoint }, err
+	ec := &EtcdContainer{container: c.(*tc.DockerContainer), name: endpoint}
+	ec.createDataDir()
+
+	return ec, err
 }
