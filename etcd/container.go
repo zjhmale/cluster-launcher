@@ -1,4 +1,4 @@
-package etcdclusterlauncher
+package etcd
 
 import (
 	"context"

@@ -1,6 +1,8 @@
-package etcdclusterlauncher
+package etcd
 
-import ()
+import (
+	"sync"
+)
 
 type ContainerListener interface {
 	Started(c EtcdContainer)
@@ -8,4 +10,8 @@ type ContainerListener interface {
 	Stopped(c EtcdContainer)
 }
 
-type EtcdListener struct{}
+type EtcdListener struct{
+	waitgroup sync.WaitGroup
+}
+
+

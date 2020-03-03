@@ -1,4 +1,4 @@
-package etcdclusterlauncher
+package etcd
 
 import (
 	"fmt"
@@ -37,3 +37,16 @@ func NewEtcdCluster(clusterName string, nodesNum int) *EtcdCluster {
 
 	return &EtcdCluster{containers: containers}
 }
+
+func (ec *EtcdCluster) Start() {
+
+}
+
+func (ec *EtcdCluster) Restart() {
+
+}
+
+func (ec *EtcdCluster) Close() {
+
+}
+

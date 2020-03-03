@@ -1,4 +1,4 @@
-module github.com/zjhmale/etcd-cluster-launcher
+module github.com/zjhmale/cluster-launcher
 
 go 1.13
 
