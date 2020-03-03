@@ -12,6 +12,7 @@ import (
 
 	"github.com/docker/go-connections/nat"
 	tc "github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
@@ -135,11 +136,14 @@ func NewEtcdContainer(ctx context.Context, clusterName string, listener *EtcdLis
 		)
 	}
 
+	clientTcpPort := fmt.Sprintf("%d/tcp", EtcdClientPort)
+	peerTcpPort := fmt.Sprintf("%d/tcp", EtcdPeerPort)
+
 	req := tc.ContainerRequest{
 		Image: EtcdImage,
 		ExposedPorts: []string{
-			fmt.Sprintf("%d/tcp", EtcdClientPort),
-			fmt.Sprintf("%d/tcp", EtcdPeerPort),
+			clientTcpPort,
+			peerTcpPort,
 		},
 		Cmd: cmd,
 		Networks: []string{
@@ -148,6 +152,10 @@ func NewEtcdContainer(ctx context.Context, clusterName string, listener *EtcdLis
 		NetworkAliases: map[string][]string{
 			clusterName: []string{endpoint},
 		},
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort((nat.Port)(clientTcpPort)),
+			wait.ForListeningPort((nat.Port)(peerTcpPort)),
+		),
 	}
 
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
