@@ -3,6 +3,9 @@ package etcd
 import (
 	"fmt"
 	"net/url"
+	"sync"
+
+	"github.com/tevino/abool"
 )
 
 type ContainerCluster interface {
@@ -26,9 +29,12 @@ func NewEtcdCluster(clusterName string, nodesNum int) *EtcdCluster {
 		endpoints = append(endpoints, endpoint)
 	}
 
+	var wg sync.WaitGroup
+	listener := &EtcdListener{waitgroup: wg, failedToStart: abool.New()}
+
 	for i := 0; i < nodesNum; i++ {
 		endpoint := fmt.Sprintf("etcd%d", i)
-		container, err := NewEtcdContainer(clusterName, endpoint, endpoints)
+		container, err := NewEtcdContainer(clusterName, listener, endpoint, endpoints)
 		if err != nil {
 			continue
 		}
@@ -49,4 +55,3 @@ func (ec *EtcdCluster) Restart() {
 func (ec *EtcdCluster) Close() {
 
 }
-

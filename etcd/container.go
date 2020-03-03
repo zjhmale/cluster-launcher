@@ -2,6 +2,7 @@ package etcd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -20,27 +21,30 @@ const (
 
 type EtcdContainer struct {
 	container *tc.DockerContainer
-	name      string
+	listener  *EtcdListener
+	endpoint  string
 	dataDir   string
 }
 
 func (c *EtcdContainer) Start(ctx context.Context) {
 	if c.container != nil {
 		if err := c.container.Start(ctx); err != nil {
-			if name, e := c.container.Name(ctx); e != nil {
-				log.Printf("Error when starting container: %v", name)
-			}
+			log.Printf("Error when starting container: %v", c.endpoint)
+			c.listener.FailedToStart(c, err)
+		} else {
+			c.listener.Started(c)
 		}
-
+	} else {
+		c.listener.FailedToStart(c, errors.New("raw container not exist"))
 	}
 }
 
 func (c *EtcdContainer) Stop(ctx context.Context) {
 	if c.container != nil {
 		if err := c.container.Terminate(ctx); err != nil {
-			if name, e := c.container.Name(ctx); e != nil {
-				log.Printf("Error when stoping container: %v", name)
-			}
+			log.Printf("Error when stoping container: %v", c.endpoint)
+		} else {
+			c.listener.Stopped(c)
 		}
 	}
 }
@@ -56,7 +60,7 @@ func (c *EtcdContainer) Close(ctx context.Context) {
 }
 
 func (c *EtcdContainer) createDataDir() {
-	prefix := fmt.Sprintf("etcd_cluster_mock_data_%s", c.name)
+	prefix := fmt.Sprintf("etcd_cluster_mock_data_%s", c.endpoint)
 	dir, err := ioutil.TempDir("", prefix)
 	if err != nil {
 		log.Fatalf("create data directory %s failed", prefix)
@@ -70,7 +74,7 @@ func (c *EtcdContainer) deleteDataDir() {
 	}
 }
 
-func NewEtcdContainer(clusterName string, endpoint string, endpoints []string) (*EtcdContainer, error) {
+func NewEtcdContainer(clusterName string, listener *EtcdListener, endpoint string, endpoints []string) (*EtcdContainer, error) {
 	clientUrl := fmt.Sprintf("http://0.0.0.0:%d", EtcdClientPort)
 	cmd := []string{
 		"etcd",
@@ -117,7 +121,11 @@ func NewEtcdContainer(clusterName string, endpoint string, endpoints []string) (
 		Started:          true,
 	})
 
-	ec := &EtcdContainer{container: c.(*tc.DockerContainer), name: endpoint}
+	ec := &EtcdContainer{
+		container: c.(*tc.DockerContainer),
+		listener:  listener,
+		endpoint:  endpoint,
+	}
 	ec.createDataDir()
 
 	return ec, err
