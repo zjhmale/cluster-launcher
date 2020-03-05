@@ -2,10 +2,10 @@ package etcd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 	"sync"
 )
 
@@ -60,38 +60,30 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 	}, nil
 }
 
-func (ec *EtcdCluster) Start() error {
+func (ec *EtcdCluster) Trigger(action string, cb func(c *EtcdContainer) error) error {
 	for _, c := range ec.containers {
 		c := c
 		go func() {
-			log.Printf("Starting etcd container %v", c.endpoint)
-			if err := c.Start(); err != nil {
-				log.Printf("Error %v when starting etcd container %v", err, c.endpoint)
+			log.Printf("%sing etcd container %v", strings.Title(action), c.endpoint)
+			if err := cb(c); err != nil {
+				log.Printf("Error %v when %sing etcd container %v", err, action, c.endpoint)
 			}
 		}()
 	}
 	ec.waitgroup.Wait()
 	if ec.listener.IsFailed() {
-		return errors.New("Etcd cluster failed to start")
+		return fmt.Errorf("Etcd cluster failed to %s", action)
 	}
 	return nil
+
+}
+
+func (ec *EtcdCluster) Start() error {
+	return ec.Trigger("start", func(c *EtcdContainer) error { return c.Start() })
 }
 
 func (ec *EtcdCluster) Restart() error {
-	for _, c := range ec.containers {
-		c := c
-		go func() {
-			log.Printf("Restarting etcd container %v", c.endpoint)
-			if err := c.Restart(); err != nil {
-				log.Printf("Error %v when restarting etcd container %v", err, c.endpoint)
-			}
-		}()
-	}
-	ec.waitgroup.Wait()
-	if ec.listener.IsFailed() {
-		return errors.New("Etcd cluster failed to restart")
-	}
-	return nil
+	return ec.Trigger("restart", func(c *EtcdContainer) error { return c.Restart() })
 }
 
 func (ec *EtcdCluster) Close() error {

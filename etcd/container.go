@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -26,6 +27,7 @@ type EtcdContainer struct {
 	container *tc.DockerContainer
 	listener  *EtcdListener
 	waitgroup *sync.WaitGroup
+	network   tc.Network
 	context   context.Context
 	endpoint  string
 	dataDir   string
@@ -78,6 +80,10 @@ func (c *EtcdContainer) Close() error {
 	if err := c.deleteDataDir(); err != nil {
 		return err
 	}
+	if err := c.network.Remove(c.context); err != nil {
+		log.Printf("Error %v when removing network %v", err, c.network)
+	}
+
 	return nil
 }
 
@@ -163,30 +169,44 @@ func NewEtcdContainer(
 	clientTcpPort := fmt.Sprintf("%d/tcp", EtcdClientPort)
 	peerTcpPort := fmt.Sprintf("%d/tcp", EtcdPeerPort)
 
-	req := tc.ContainerRequest{
-		Image: EtcdImage,
-		ExposedPorts: []string{
-			clientTcpPort,
-			peerTcpPort,
+	gcr := tc.GenericContainerRequest{
+		ContainerRequest: tc.ContainerRequest{
+			Image: EtcdImage,
+			ExposedPorts: []string{
+				clientTcpPort,
+				peerTcpPort,
+			},
+			Cmd: cmd,
+			Networks: []string{
+				clusterName,
+			},
+			NetworkAliases: map[string][]string{
+				clusterName: []string{endpoint},
+			},
+			WaitingFor: wait.ForAll(
+				wait.ForListeningPort((nat.Port)(clientTcpPort)),
+				wait.ForListeningPort((nat.Port)(peerTcpPort)),
+			),
+			SkipReaper: true,
 		},
-		Cmd: cmd,
-		Networks: []string{
-			clusterName,
-		},
-		NetworkAliases: map[string][]string{
-			clusterName: []string{endpoint},
-		},
-		WaitingFor: wait.ForAll(
-			wait.ForListeningPort((nat.Port)(clientTcpPort)),
-			wait.ForListeningPort((nat.Port)(peerTcpPort)),
-		),
+		Started: false,
 	}
 
-	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	provider, err := gcr.ProviderType.GetProvider()
+	if err != nil {
+		return nil, err
+	}
 
+	network, err := provider.CreateNetwork(ctx, tc.NetworkRequest{
+		Name:           clusterName,
+		CheckDuplicate: true,
+		SkipReaper:     true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := tc.GenericContainer(ctx, gcr)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +215,7 @@ func NewEtcdContainer(
 		container: c.(*tc.DockerContainer),
 		listener:  listener,
 		waitgroup: wg,
+		network:   network,
 		context:   ctx,
 		endpoint:  endpoint,
 	}
