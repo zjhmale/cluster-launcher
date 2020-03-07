@@ -7,6 +7,9 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+
+	"github.com/docker/docker/client"
+	tc "github.com/testcontainers/testcontainers-go"
 )
 
 type ContainerCluster interface {
@@ -22,18 +25,40 @@ type EtcdCluster struct {
 	waitgroup  *sync.WaitGroup
 	listener   *EtcdListener
 	context    context.Context
+	client     *client.Client
+	network    *tc.DockerNetwork
 }
 
 func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 	var endpoints []string
 	var containers []*EtcdContainer
+	ctx := context.Background()
+
+	client, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return nil, err
+	}
+	client.NegotiateAPIVersion(context.Background())
+
+	provider, err := tc.NewDockerProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	network, err := provider.CreateNetwork(ctx, tc.NetworkRequest{
+		Name:           clusterName,
+		CheckDuplicate: true,
+		SkipReaper:     true,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	for i := 0; i < nodesNum; i++ {
 		endpoint := fmt.Sprintf("etcd%d", i)
 		endpoints = append(endpoints, endpoint)
 	}
 
-	ctx := context.Background()
 	wg := &sync.WaitGroup{}
 	listener := NewEtcdListener(wg)
 
@@ -57,6 +82,8 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 		waitgroup:  wg,
 		listener:   listener,
 		context:    ctx,
+		client:     client,
+		network:    network.(*tc.DockerNetwork),
 	}, nil
 }
 
@@ -75,7 +102,6 @@ func (ec *EtcdCluster) Trigger(action string, cb func(c *EtcdContainer) error) e
 		return fmt.Errorf("Etcd cluster failed to %s", action)
 	}
 	return nil
-
 }
 
 func (ec *EtcdCluster) Start() error {
@@ -87,6 +113,10 @@ func (ec *EtcdCluster) Restart() error {
 }
 
 func (ec *EtcdCluster) Close() error {
+	if err := ec.client.NetworkRemove(ec.context, ec.network.ID); err != nil {
+		return err
+	}
+
 	var rtnErr error
 	for _, c := range ec.containers {
 		log.Printf("Stopping etcd container %v", c.endpoint)

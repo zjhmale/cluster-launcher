@@ -31,6 +31,7 @@ func main() {
 		if err := c.Close(); err != nil {
 			fmt.Printf("Stop error %v", err)
 		}
+		os.Exit(0)
 	}()
 
 	select {}

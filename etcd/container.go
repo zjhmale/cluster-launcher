@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -27,7 +26,6 @@ type EtcdContainer struct {
 	container *tc.DockerContainer
 	listener  *EtcdListener
 	waitgroup *sync.WaitGroup
-	network   tc.Network
 	context   context.Context
 	endpoint  string
 	dataDir   string
@@ -80,10 +78,6 @@ func (c *EtcdContainer) Close() error {
 	if err := c.deleteDataDir(); err != nil {
 		return err
 	}
-	if err := c.network.Remove(c.context); err != nil {
-		log.Printf("Error %v when removing network %v", err, c.network)
-	}
-
 	return nil
 }
 
@@ -192,20 +186,6 @@ func NewEtcdContainer(
 		Started: false,
 	}
 
-	provider, err := gcr.ProviderType.GetProvider()
-	if err != nil {
-		return nil, err
-	}
-
-	network, err := provider.CreateNetwork(ctx, tc.NetworkRequest{
-		Name:           clusterName,
-		CheckDuplicate: true,
-		SkipReaper:     true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	c, err := tc.GenericContainer(ctx, gcr)
 	if err != nil {
 		return nil, err
@@ -215,7 +195,6 @@ func NewEtcdContainer(
 		container: c.(*tc.DockerContainer),
 		listener:  listener,
 		waitgroup: wg,
-		network:   network,
 		context:   ctx,
 		endpoint:  endpoint,
 	}
