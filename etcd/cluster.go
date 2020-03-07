@@ -7,9 +7,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-
-	"github.com/docker/docker/client"
-	tc "github.com/testcontainers/testcontainers-go"
 )
 
 type ContainerCluster interface {
@@ -25,8 +22,7 @@ type EtcdCluster struct {
 	waitgroup  *sync.WaitGroup
 	listener   *EtcdListener
 	context    context.Context
-	client     *client.Client
-	network    *tc.DockerNetwork
+	network    *EtcdNetwork
 }
 
 func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
@@ -34,22 +30,7 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 	var containers []*EtcdContainer
 	ctx := context.Background()
 
-	client, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		return nil, err
-	}
-	client.NegotiateAPIVersion(context.Background())
-
-	provider, err := tc.NewDockerProvider()
-	if err != nil {
-		return nil, err
-	}
-
-	network, err := provider.CreateNetwork(ctx, tc.NetworkRequest{
-		Name:           clusterName,
-		CheckDuplicate: true,
-		SkipReaper:     true,
-	})
+	network, err := NewEtcdNetwork(ctx, clusterName)
 	if err != nil {
 		return nil, err
 	}
@@ -82,8 +63,7 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 		waitgroup:  wg,
 		listener:   listener,
 		context:    ctx,
-		client:     client,
-		network:    network.(*tc.DockerNetwork),
+		network:    network,
 	}, nil
 }
 
@@ -113,7 +93,7 @@ func (ec *EtcdCluster) Restart() error {
 }
 
 func (ec *EtcdCluster) Close() error {
-	if err := ec.client.NetworkRemove(ec.context, ec.network.ID); err != nil {
+	if err := ec.network.Remove(); err != nil {
 		return err
 	}
 
