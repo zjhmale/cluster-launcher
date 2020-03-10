@@ -46,7 +46,7 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 	var rtnErr error
 	for i := 0; i < nodesNum; i++ {
 		endpoint := fmt.Sprintf("etcd%d", i)
-		container, err := NewEtcdContainer(ctx, wg, clusterName, listener, endpoint, endpoints)
+		container, err := NewEtcdContainer(ctx, clusterName, listener, endpoint, endpoints)
 		if err != nil {
 			rtnErr = err
 			break
@@ -70,6 +70,7 @@ func NewEtcdCluster(clusterName string, nodesNum int) (*EtcdCluster, error) {
 func (ec *EtcdCluster) Trigger(action string, cb func(c *EtcdContainer) error) error {
 	for _, c := range ec.containers {
 		c := c
+		ec.waitgroup.Add(1)
 		go func() {
 			log.Printf("%sing etcd container %v", strings.Title(action), c.endpoint)
 			if err := cb(c); err != nil {
@@ -93,10 +94,6 @@ func (ec *EtcdCluster) Restart() error {
 }
 
 func (ec *EtcdCluster) Close() error {
-	if err := ec.network.Remove(); err != nil {
-		return err
-	}
-
 	var rtnErr error
 	for _, c := range ec.containers {
 		log.Printf("Stopping etcd container %v", c.endpoint)
@@ -105,12 +102,18 @@ func (ec *EtcdCluster) Close() error {
 			break
 		}
 	}
-	return rtnErr
+	if rtnErr != nil {
+		return rtnErr
+	}
+	if err := ec.network.Remove(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (ec *EtcdCluster) Endpoints(cb func(*EtcdContainer) (*url.URL, error)) ([]*url.URL, error) {
 	var rtnErr error
-	endpoints := make([]*url.URL, len(ec.containers))
+	var endpoints []*url.URL
 	for _, c := range ec.containers {
 		e, err := c.ClientEndpoint()
 		if err != nil {

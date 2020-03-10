@@ -26,7 +26,8 @@ func main() {
 
 	wg := &sync.WaitGroup{}
 	listener := NewEtcdListener(wg)
-	c, err := NewEtcdContainer(ctx, wg, clusterName, listener, "etcd", []string{"etcd"})
+	wg.Add(1)
+	c, err := NewEtcdContainer(ctx, clusterName, listener, "etcd", []string{"etcd"})
 	if err != nil {
 		fmt.Printf("Create container error %v\n", err)
 	}
@@ -41,11 +42,11 @@ func main() {
 	}
 
 	cli, err := client.New(client.Config{
-		Endpoints: []string{endpoint.Host},
+		Endpoints:   []string{endpoint.Host},
 		DialTimeout: 5 * time.Second,
 	})
 
-	if err !=nil {
+	if err != nil {
 		fmt.Printf("Create etcd client error %v\n", err)
 	}
 
@@ -72,7 +73,10 @@ func main() {
 			fmt.Printf("Remove network error %v\n", err)
 			os.Exit(1)
 		}
-		cli.Close()
+		if err := cli.Close(); err != nil {
+			fmt.Printf("Stop client error %v\n", err)
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}()
 

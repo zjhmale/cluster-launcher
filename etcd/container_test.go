@@ -17,11 +17,12 @@ func (suite *ContainerTestSuite) SetupSuite() {
 	ctx := context.Background()
 	wg := &sync.WaitGroup{}
 	listener := NewEtcdListener(wg)
-	c, err := NewEtcdContainer(ctx, wg, "cluster", listener, "etcd", []string{"etcd"})
+	c, err := NewEtcdContainer(ctx, "cluster", listener, "etcd", []string{"etcd"})
 	if err != nil {
 		suite.T().Fatalf("Error %v when creating etcd container", err)
 	}
 
+	wg.Add(1)
 	if err := c.Start(); err != nil {
 		suite.T().Fatalf("Error %v when starting etcd container", err)
 	}

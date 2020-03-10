@@ -8,11 +8,9 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/docker/go-connections/nat"
 	tc "github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
@@ -25,14 +23,12 @@ const (
 type EtcdContainer struct {
 	container *tc.DockerContainer
 	listener  *EtcdListener
-	waitgroup *sync.WaitGroup
 	context   context.Context
 	endpoint  string
 	dataDir   string
 }
 
 func (c *EtcdContainer) Start() error {
-	c.waitgroup.Add(1)
 	if c.container != nil {
 		if err := c.container.Start(c.context); err != nil {
 			c.listener.FailedToStart(c, err)
@@ -129,7 +125,6 @@ func (c *EtcdContainer) PeerEndpoint() (*url.URL, error) {
 
 func NewEtcdContainer(
 	ctx context.Context,
-	wg *sync.WaitGroup,
 	clusterName string,
 	listener *EtcdListener,
 	endpoint string,
@@ -177,10 +172,6 @@ func NewEtcdContainer(
 			NetworkAliases: map[string][]string{
 				clusterName: []string{endpoint},
 			},
-			WaitingFor: wait.ForAll(
-				wait.ForListeningPort((nat.Port)(clientTcpPort)),
-				wait.ForListeningPort((nat.Port)(peerTcpPort)),
-			),
 			SkipReaper: true,
 		},
 		Started: false,
@@ -194,7 +185,6 @@ func NewEtcdContainer(
 	ec := &EtcdContainer{
 		container: c.(*tc.DockerContainer),
 		listener:  listener,
-		waitgroup: wg,
 		context:   ctx,
 		endpoint:  endpoint,
 	}
