@@ -12,6 +12,7 @@ require (
 	github.com/docker/docker v0.7.3-0.20190506211059-b20a14b54661
 	github.com/docker/go-connections v0.4.0
 	github.com/gogo/protobuf v1.3.1 // indirect
+	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.3.4 // indirect
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/uuid v1.1.1 // indirect
@@ -27,6 +28,7 @@ require (
 	github.com/tevino/abool v0.0.0-20170917061928-9b9efcf221b5
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20200122045848-3419fae592fc // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
+	go.etcd.io/bbolt v1.3.3 // indirect
 	go.uber.org/multierr v1.5.0 // indirect
 	go.uber.org/zap v1.14.0 // indirect
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect

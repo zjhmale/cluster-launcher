@@ -1,0 +1,16 @@
+language: go
+
+go:
+  - "1.13"
+
+env:
+  - GO111MODULE=on
+
+install: true
+
+services:
+  - docker
+
+script:
+  - go fmt ./... && go mod tidy && [[ -z `git status -s` ]]
+  - go test -v -count=1 ./...
