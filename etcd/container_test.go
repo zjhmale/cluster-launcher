@@ -2,7 +2,6 @@ package etcd
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -41,7 +40,7 @@ func (suite *ContainerTestSuite) SetupSuite() {
 
 	endpoint, err := c.ClientEndpoint()
 	if err != nil {
-		fmt.Printf("Get client endpoint error %v\n", err)
+		suite.T().Fatalf("Get client endpoint error %v\n", err)
 	}
 
 	cli, err := client.New(client.Config{
@@ -50,7 +49,7 @@ func (suite *ContainerTestSuite) SetupSuite() {
 	})
 
 	if err != nil {
-		fmt.Printf("Create etcd client error %v\n", err)
+		suite.T().Fatalf("Create etcd client error %v\n", err)
 	}
 
 	suite.container = c
